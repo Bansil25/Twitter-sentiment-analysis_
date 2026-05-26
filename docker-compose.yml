@@ -1,0 +1,135 @@
+# =============================================================================
+# docker-compose.yml — Full local stack
+# =============================================================================
+# What runs when you `docker compose up`:
+#   - api         FastAPI app (port 8000)        ← what you built
+#   - redis       Cache & rate limiting (6379)
+#   - mlflow      Experiment tracking UI (5000)
+#   - prometheus  Metrics collection (9090)
+#   - grafana     Dashboards (3001 — to avoid 3000 if frontend uses it)
+#   - nginx       Reverse proxy with TLS (80, 443)
+#
+# Networking:
+#   All services on the `sentimentai` bridge network can reach each other
+#   by SERVICE NAME (not localhost!). So the API reaches Redis at "redis",
+#   Grafana reaches Prometheus at "prometheus".
+# =============================================================================
+
+version: "3.9"
+
+networks:
+  sentimentai:
+    driver: bridge
+
+volumes:
+  redis_data:
+  mlflow_data:
+  model_artifacts:
+  prometheus_data:
+  grafana_data:
+
+services:
+  # ─── FastAPI app ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: sentimentai-api
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT:           development
+      SECRET_KEY:            dev-secret-key-change-in-production-must-be-32chars
+      REDIS_URL:             redis://redis:6379/0
+      MLFLOW_TRACKING_URI:   http://mlflow:5000
+      DISTILBERT_MODEL_PATH: /app/ml/saved_models/distilbert
+      BILSTM_MODEL_PATH:     /app/ml/saved_models/bilstm/model.keras
+      LOG_FORMAT:            console
+      ENABLE_DOCS:           "true"
+    volumes:
+      - model_artifacts:/app/ml/saved_models
+      - ./app:/app/app          # live reload in dev (remove for prod)
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [sentimentai]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ─── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sentimentai-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks: [sentimentai]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─── MLflow ──────────────────────────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.18.0
+    container_name: sentimentai-mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    networks: [sentimentai]
+    restart: unless-stopped
+
+  # ─── Prometheus ──────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: sentimentai-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"      # lets us POST /reload to reload config
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks: [sentimentai]
+    restart: unless-stopped
+    depends_on: [api]
+
+  # ─── Grafana ─────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: sentimentai-grafana
+    ports:
+      - "3001:3000"                  # 3001 host -> 3000 container (avoid frontend conflict)
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      GF_AUTH_ANONYMOUS_ENABLED:  "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on: [prometheus]
+    networks: [sentimentai]
+    restart: unless-stopped

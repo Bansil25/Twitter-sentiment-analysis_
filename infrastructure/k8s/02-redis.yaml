@@ -1,0 +1,71 @@
+# =============================================================================
+# 02-redis.yaml — Redis for caching and rate limiting
+# =============================================================================
+# We deploy Redis IN-CLUSTER (alongside our app) for simplicity.
+# In real production, you'd usually use a managed Redis (AWS ElastiCache,
+# GCP Memorystore, Upstash) so you don't manage backups/failover yourself.
+#
+# This file contains TWO resources separated by ---
+#   1. Deployment — runs the actual Redis pod
+#   2. Service    — gives it a stable DNS name (sentimentai-redis) that
+#                   the API can connect to from the REDIS_URL we set above
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentimentai-redis
+  namespace: sentimentai
+spec:
+  replicas: 1                              # cache is in-memory; HA = use managed Redis
+  selector:
+    matchLabels:
+      app: sentimentai-redis
+  template:                                # ↓ this is the Pod spec
+    metadata:
+      labels:
+        app: sentimentai-redis             # MUST match selector above
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine            # alpine = ~30MB, perfect for cache
+          ports:
+            - containerPort: 6379
+          # Cap memory at 256MB; evict least-recently-used keys when full
+          # This keeps cache from growing unbounded under sustained load
+          args:
+            - "--maxmemory"
+            - "256mb"
+            - "--maxmemory-policy"
+            - "allkeys-lru"
+          resources:
+            requests:                      # what k8s reserves for this pod
+              cpu: "100m"                  # 100m = 0.1 of a CPU core
+              memory: "128Mi"
+            limits:                        # hard ceiling — exceeding kills pod
+              cpu: "500m"
+              memory: "320Mi"              # slightly above maxmemory cap
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+
+# Service: gives Redis a stable DNS name so the API can find it.
+# Inside the cluster, the API connects to: redis://sentimentai-redis:6379/0
+# (matches REDIS_URL in our ConfigMap above)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentimentai-redis
+  namespace: sentimentai
+spec:
+  selector:
+    app: sentimentai-redis                 # route traffic to pods with this label
+  ports:
+    - port: 6379
+      targetPort: 6379
+  type: ClusterIP                          # ClusterIP = only reachable INSIDE the cluster
+                                           # (other options: NodePort, LoadBalancer — see api.yaml)

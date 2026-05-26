@@ -1,0 +1,20 @@
+# =============================================================================
+# dashboard-provider.yml — tells Grafana where to find dashboard JSON files
+# =============================================================================
+# Pairs with the actual dashboard JSON file in ../dashboards/
+# Mount this AND the dashboards folder into Grafana, and dashboards appear
+# in the UI automatically — no manual import needed.
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: SentimentAI
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10              # rescan for new dashboards every 10s
+    allowUiUpdates: true                   # let users edit (but changes don't persist on restart)
+    options:
+      path: /etc/grafana/provisioning/dashboards

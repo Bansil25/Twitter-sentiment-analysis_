@@ -1,0 +1,90 @@
+# =============================================================================
+# alerts.yml — Prometheus alert rules
+# =============================================================================
+# Once Prometheus stores metrics, you can write rules that fire alerts when
+# something looks wrong. In production, these route to Slack/PagerDuty via
+# Alertmanager. For local dev, they just show up in Prometheus UI > Alerts.
+#
+# Each rule has three parts:
+#   - expr:       a PromQL query. If it returns rows, the alert is firing.
+#   - for:        only fire after the condition holds for this long
+#                 (prevents flapping on transient spikes)
+#   - labels:     metadata (severity, team) for routing
+#   - annotations: human-readable description for the alert message
+# =============================================================================
+
+groups:
+  - name: sentimentai_api
+    interval: 30s
+    rules:
+
+      # ── Latency ────────────────────────────────────────────────────────
+      # P95 inference latency over 5 minutes exceeds 500ms.
+      # histogram_quantile() reads our request latency histogram.
+      - alert: HighInferenceLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(sentimentai_request_latency_seconds_bucket[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "P95 latency above 500ms"
+          description: "{{ $labels.endpoint }} P95 is {{ $value | humanizeDuration }}. Investigate worker saturation."
+
+      # ── Error rate ──────────────────────────────────────────────────────
+      # >2% of requests return 5xx over the last 5 minutes.
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(sentimentai_requests_total{status_code=~"5.."}[5m]))
+          /
+          sum(rate(sentimentai_requests_total[5m]))
+          > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "5xx error rate above 2%"
+          description: "Error rate is {{ $value | humanizePercentage }} — check pod logs"
+
+      # ── Low prediction confidence ───────────────────────────────────────
+      # Indicator of model drift or OOD inputs. Average confidence drops below 70%.
+      - alert: LowAverageConfidence
+        expr: |
+          histogram_quantile(0.50,
+            rate(sentimentai_prediction_confidence_bucket[15m])
+          ) < 0.70
+        for: 15m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Median prediction confidence dropped below 70%"
+          description: "May indicate model drift, OOD inputs, or label distribution shift. Check drift dashboard."
+
+      # ── Pod unavailability ──────────────────────────────────────────────
+      # Fewer than 2 API pods ready (out of expected 3+).
+      # 'up' is a built-in Prometheus metric: 1 if scrape worked, 0 if not.
+      - alert: ApiPodDown
+        expr: sum(up{job="sentimentai-api"}) < 2
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Fewer than 2 API pods responding to /metrics"
+          description: "K8s may be rescheduling pods, or pods are crashing. Check `kubectl get pods -n sentimentai`"
+
+      # ── Redis unreachable ───────────────────────────────────────────────
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Redis is unreachable"
+          description: "App will fall back to in-memory rate limiting. No data loss, but performance may degrade."

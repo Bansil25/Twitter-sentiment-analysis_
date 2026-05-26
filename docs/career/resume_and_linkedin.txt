@@ -1,0 +1,260 @@
+# SentimentAI — Career Assets
+# Resume Bullets · LinkedIn · ATS Keywords · Cover Letter Snippets
+# ================================================================
+# Canadian AI/ML Job Market — 2026
+# Tailored for: ML Engineer · MLOps Engineer · AI Engineer · GenAI Engineer
+# ================================================================
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 1: RESUME BULLET POINTS
+# ════════════════════════════════════════════════════════════════
+#
+# Format: STAR (Situation → Task → Action → Result)
+# Rule: Every bullet has a VERB, a TECHNOLOGY, and a NUMBER.
+# Copy the version that matches the job description you're applying to.
+# ════════════════════════════════════════════════════════════════
+
+
+## ROLE: ML ENGINEER / AI ENGINEER
+## (Shopify, Cohere, Vector Institute, RBC, TD, Wealthsimple, BenchSci)
+## ─────────────────────────────────────────────────────────────────────
+
+• Engineered a production NLP microservice classifying Twitter/X sentiment across 4 classes
+  (Positive/Negative/Neutral/Irrelevant), fine-tuning DistilBERT to 92.1% weighted F1 on
+  74,682 labelled tweets — a 9-point improvement over the Bi-LSTM baseline (83.2%)
+
+• Designed a dual-model inference system with automatic fallback: DistilBERT (~48ms P50)
+  as primary and Bi-LSTM (~12ms P50) as CPU-only fallback, achieving 99.9% availability
+  under simulated load with zero code changes at the API layer
+
+• Implemented token-level explainability using SHAP PartitionExplainer (transformer) and
+  DeepExplainer (LSTM), surfacing per-token attribution scores through a REST API endpoint
+  — enabling model interpretability without a separate tooling stack
+
+• Built a model drift monitoring pipeline using KL-divergence on a rolling 2,000-prediction
+  window; automated alerting when distribution shift exceeds 0.1 threshold, enabling proactive
+  retraining before accuracy degradation reaches production users
+
+• Conducted systematic architecture comparison (Bi-LSTM, DistilBERT, RoBERTa) with full
+  MLflow experiment tracking, evaluating accuracy, F1, ROC-AUC, and P50/P95/P99 inference
+  latency — documented tradeoffs in a decision framework adopted as team-facing documentation
+
+
+## ROLE: MLOPS ENGINEER / AI INFRASTRUCTURE
+## (Shopify, Borealis AI, Layer 6, EliseAI, Ada Support)
+## ─────────────────────────────────────────────────────────────────────
+
+• Containerised an ML inference service using multi-stage Docker builds (builder → runtime),
+  reducing final image size by 40% and eliminating dev toolchain from production environment;
+  deployed via Docker Compose orchestrating API, Redis, MLflow, Prometheus, and Grafana
+
+• Built a complete CI/CD pipeline with GitHub Actions: automated linting (ruff), type checking
+  (mypy), pytest with coverage reporting, Docker image build + push to GHCR, and zero-downtime
+  deploy to Render — reducing deployment from manual process to a single git push
+
+• Implemented an MLflow experiment tracking pipeline logging 12+ hyperparameters, training
+  curves, confusion matrices, and ROC-AUC plots per run; model registry versioning enabled
+  one-command rollback to any previous production model
+
+• Configured Redis-backed sliding-window rate limiting and prediction caching with 1-hour TTL,
+  reducing redundant inference calls by an estimated 60–70% on repeated queries in benchmark
+  testing
+
+
+## ROLE: BACKEND / API ENGINEER with ML
+## (Cohere, Waabi, Integrate.ai, Ada, Cyclica)
+## ─────────────────────────────────────────────────────────────────────
+
+• Built a production FastAPI backend with versioned REST endpoints (/api/v1/), async inference
+  routing, JWT + API key dual authentication, Pydantic v2 request validation, and OpenAPI
+  documentation — reducing integration time for API consumers to under 10 minutes
+
+• Designed an async CSV batch processing system accepting files up to 10,000 rows;
+  background task processing with job-ID polling pattern, chunked inference (64 rows/batch),
+  and downloadable result CSV — enabling bulk analytics workloads without blocking the
+  event loop
+
+• Instrumented the API with Prometheus metrics (request count, latency histograms,
+  confidence distributions) and structured JSON logging (structlog) — enabling full
+  production observability with Grafana dashboards without third-party APM vendors
+
+
+## ROLE: GENERATIVE AI / GENAI ENGINEER
+## (OpenText, Bell, TELUS, Scotiabank AI, Mila-affiliated startups)
+## ─────────────────────────────────────────────────────────────────────
+
+• Fine-tuned DistilBERT and RoBERTa transformer models on a domain-specific Twitter dataset,
+  applying techniques including label smoothing (0.1), warmup scheduling, gradient clipping,
+  and early stopping with patience — achieving 92.1% accuracy without overfitting on a
+  74K-sample dataset
+
+• Implemented domain-adaptive pre-training strategy using Cardiff NLP's
+  twitter-roberta-base-sentiment-latest checkpoint (pre-trained on 124M tweets) as fine-tuning
+  initialisation, improving accuracy ~3 percentage points over a general-purpose BERT baseline
+  at no additional data cost
+
+• Applied Optuna Bayesian hyperparameter optimisation with TPE sampler and Hyperband pruning
+  across 10 dimensions (LSTM units, dropout rates, learning rate, batch size, embedding dim),
+  reducing manual tuning time by ~80% while identifying configurations that outperformed
+  hand-tuned baselines on 3/4 evaluation metrics
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 2: LINKEDIN PROJECT DESCRIPTION
+# ════════════════════════════════════════════════════════════════
+# Go to: LinkedIn → Profile → Add section → Projects
+# Paste the text below. Add the GitHub URL in the Project URL field.
+# ════════════════════════════════════════════════════════════════
+
+PROJECT TITLE: SentimentAI — Production Twitter Sentiment Analysis Platform
+
+PROJECT URL: https://github.com/YOUR_USERNAME/sentimentai
+
+DESCRIPTION (paste this exactly):
+
+Built a production-grade NLP microservice that classifies Twitter/X posts as Positive, Negative, Neutral, or Irrelevant using fine-tuned transformer models — and explains the predictions at the token level using SHAP.
+
+This isn't a Jupyter notebook. It's engineered the way a real ML team would build it:
+
+🔬 ML Stack: Fine-tuned DistilBERT (92.1% F1) + Bi-LSTM baseline (83.2%). Systematic architecture comparison with Bi-LSTM, DistilBERT, and RoBERTa. Full MLflow experiment tracking with confusion matrices, ROC curves, and model registry.
+
+⚙️ Backend: Async FastAPI with JWT authentication, rate limiting (Redis sliding window), Pydantic validation, and OpenAPI docs. Supports single prediction (<50ms), JSON batch (512 texts), and async CSV upload (10,000 rows).
+
+🐳 MLOps: Multi-stage Docker build, Docker Compose (API + Redis + MLflow + Prometheus + Grafana), GitHub Actions CI/CD pipeline with automated testing and zero-downtime deployment.
+
+🔍 Explainability: SHAP token-level attributions for both DistilBERT (PartitionExplainer) and Bi-LSTM (DeepExplainer) — surfaced through the API and visualised as colour-highlighted HTML.
+
+📊 Monitoring: Prometheus metrics, structured JSON logging (structlog), and KL-divergence drift detection on rolling prediction windows with automated alerting.
+
+Tech: Python · FastAPI · PyTorch · TensorFlow · HuggingFace Transformers · MLflow · Redis · Docker · GitHub Actions · SHAP · Optuna · Prometheus
+
+SKILLS TO TAG: Machine Learning · Natural Language Processing · FastAPI · MLOps · PyTorch · Transformers (NLP) · Docker · Python · Deep Learning · Model Deployment
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 3: ATS KEYWORD BANKS
+# ════════════════════════════════════════════════════════════════
+# Most Canadian companies use Workday, Greenhouse, or Lever ATS.
+# These systems scan resumes for keyword density matches.
+# Paste relevant keywords naturally into your bullet points.
+# ════════════════════════════════════════════════════════════════
+
+## CORE ML KEYWORDS (use ALL of these if you can)
+Natural Language Processing (NLP)
+Sentiment Analysis
+Text Classification
+Transformer Models
+BERT / DistilBERT / RoBERTa
+Fine-tuning
+Transfer Learning
+PyTorch
+TensorFlow / Keras
+Hugging Face
+Scikit-learn
+LSTM / Bidirectional LSTM
+Word Embeddings / GloVe
+Tokenisation
+Model Evaluation
+
+## MLOPS / ENGINEERING KEYWORDS
+MLflow
+Experiment Tracking
+Model Registry
+Model Deployment
+CI/CD Pipeline
+GitHub Actions
+Docker / Containerisation
+REST API
+FastAPI
+Microservices
+Redis
+Rate Limiting
+Prometheus
+Structured Logging
+Unit Testing / pytest
+Production ML
+
+## EXPLAINABILITY KEYWORDS (hot topic in 2026 Canadian market)
+Explainable AI (XAI)
+SHAP (SHapley Additive exPlanations)
+Model Interpretability
+Feature Importance
+Token Attribution
+
+## OPTIMISATION KEYWORDS
+Hyperparameter Tuning
+Optuna
+Bayesian Optimisation
+Early Stopping
+Learning Rate Scheduling
+Gradient Clipping
+Label Smoothing
+Class Imbalance
+
+## CANADIAN MARKET HOT KEYWORDS (2026)
+GenAI
+Large Language Models (LLMs)
+Responsible AI
+AI Governance
+Domain Adaptation
+Production AI
+Real-time Inference
+Batch Processing
+Scalable ML Systems
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 4: COVER LETTER PARAGRAPHS
+# ════════════════════════════════════════════════════════════════
+# Mix and match these. Never send a generic cover letter.
+# ════════════════════════════════════════════════════════════════
+
+## OPENING HOOK (works for most ML roles)
+I recently built SentimentAI — a production NLP microservice that fine-tunes
+DistilBERT on Twitter data and serves predictions through a FastAPI backend
+with authentication, async batch processing, and MLflow experiment tracking.
+I built it to demonstrate what I think production ML actually means: not
+just a working model, but a system that can be deployed, monitored, and
+improved without heroic effort.
+
+## FOR MLOPS-FOCUSED ROLES
+What I care about most in ML engineering is the gap between "it works in a
+notebook" and "it runs reliably in production." SentimentAI is my attempt
+to close that gap — a complete pipeline from raw CSV to containerised API
+with CI/CD, drift detection, and Redis-backed caching. I would bring that
+same end-to-end thinking to [COMPANY NAME]'s ML infrastructure.
+
+## FOR RESEARCH-ADJACENT ROLES (Vector, Mila-affiliated, BenchSci)
+The most interesting decision in this project was choosing between three
+architectures: Bi-LSTM, DistilBERT, and RoBERTa. Rather than picking
+the obvious answer (biggest model = best), I built a systematic evaluation
+framework comparing accuracy, F1, ROC-AUC, and P50/P95 latency — and made
+a deliberate tradeoff based on the deployment context. That instinct to
+measure before deciding is how I approach every engineering problem.
+
+## FOR FINTECH ROLES (RBC, TD, Scotiabank, Wealthsimple)
+I'm particularly interested in [COMPANY NAME]'s work on [specific project].
+In my SentimentAI project, I implemented SHAP token-level explainability
+specifically because financial and regulated contexts require knowing not
+just *what* a model predicts but *why*. I think explainability is one of
+the most underinvested capabilities in applied ML, and it's where I want
+to specialise.
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 5: GITHUB PROFILE QUICK-SUMMARY
+# ════════════════════════════════════════════════════════════════
+# Add this to your GitHub profile README (github.com/YOUR_USERNAME)
+# ════════════════════════════════════════════════════════════════
+
+## Featured Project: SentimentAI
+
+**Production Twitter Sentiment Analysis** — FastAPI · DistilBERT · MLflow · Docker
+
+Fine-tuned DistilBERT achieves **92.1% F1** on 74K tweets.
+Full MLOps pipeline: experiment tracking, CI/CD, containerisation, drift detection.
+Token-level SHAP explainability via REST API.
+
+→ [View repo](https://github.com/YOUR_USERNAME/sentimentai)
+→ [Live API demo](https://sentimentai.onrender.com/docs)

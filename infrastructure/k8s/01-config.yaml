@@ -1,0 +1,69 @@
+# =============================================================================
+# 01-config.yaml — Configuration that the app reads as environment variables
+# =============================================================================
+# Two resources here:
+#   1. ConfigMap — non-sensitive config (log level, model paths, URLs)
+#   2. Secret    — sensitive config (JWT secret key, API keys)
+#
+# Why separate them?
+#   - ConfigMaps can be read by anyone with cluster access
+#   - Secrets are base64-encoded and require separate RBAC permissions
+#   - Best practice: never put secrets in ConfigMaps, never put non-secrets
+#     in Secrets (just for clean access control)
+#
+# How does the app read these?
+#   In the Deployment (next file), we reference these via envFrom.
+#   The keys here become environment variables inside the container.
+#   So MODEL_PATH below becomes os.getenv("MODEL_PATH") in Python.
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentimentai-config
+  namespace: sentimentai
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  ENABLE_DOCS: "false"                    # disable Swagger in prod
+  DEFAULT_MODEL: "distilbert"
+  MAX_SEQUENCE_LENGTH: "128"
+  BATCH_SIZE: "32"
+  MAX_BATCH_CSV_ROWS: "10000"
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW_SECONDS: "60"
+  CACHE_TTL_SECONDS: "3600"
+  DISTILBERT_MODEL_PATH: "/app/ml/saved_models/distilbert"
+  BILSTM_MODEL_PATH: "/app/ml/saved_models/bilstm/model.keras"
+  REDIS_URL: "redis://sentimentai-redis:6379/0"
+  MLFLOW_TRACKING_URI: "http://sentimentai-mlflow:5000"
+  CORS_ORIGINS: "https://sentimentai.example.com"
+
+---
+
+# =============================================================================
+# Secret — sensitive values, base64-encoded
+# =============================================================================
+# Teaching note: base64 is NOT encryption! It's just encoding.
+# In production, use:
+#   - HashiCorp Vault, AWS Secrets Manager, or Sealed Secrets (Bitnami)
+#   - External Secrets Operator to pull from cloud secret managers
+#
+# For this file: generate values with `echo -n "yourvalue" | base64`
+# The -n flag is critical — without it you'll include a trailing newline
+# and authentication will fail in confusing ways.
+# =============================================================================
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sentimentai-secrets
+  namespace: sentimentai
+type: Opaque
+data:
+  # Generate: echo -n "your-32-char-secret-key-here" | base64
+  SECRET_KEY: eW91ci0zMi1jaGFyLXNlY3JldC1rZXktaGVyZS1jaGFuZ2VtZQ==
+
+  # Generate: echo -n "your-api-key" | sha256sum  (then base64 that hash)
+  HASHED_API_KEY: cGxhY2Vob2xkZXItcmVwbGFjZS1tZS1pbi1wcm9kdWN0aW9u

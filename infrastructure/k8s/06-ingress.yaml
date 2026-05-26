@@ -1,0 +1,68 @@
+# =============================================================================
+# 06-ingress.yaml — External access (HTTPS, domain name, TLS)
+# =============================================================================
+# Service exposes the API INSIDE the cluster. Ingress exposes it to the INTERNET.
+#
+# Architecture:
+#   Internet → Ingress (nginx-ingress-controller) → Service → Pod
+#
+# Ingress vs LoadBalancer Service?
+#   - LoadBalancer Service: 1 cloud LB per service (expensive — $20/month each)
+#   - Ingress: 1 LB shared by ALL services, with path-based routing
+#   For any cluster with >1 service, Ingress is the right answer.
+#
+# Requires an Ingress Controller in the cluster:
+#   - On EKS:  AWS Load Balancer Controller, or nginx-ingress
+#   - On GKE:  GKE Ingress (built in), or nginx-ingress
+#   - Local:   `minikube addons enable ingress`
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sentimentai-api
+  namespace: sentimentai
+  annotations:
+    # ── nginx-ingress specific ──────────────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"        # CSV upload limit
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"     # model inference timeout
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+    # ── auto-redirect HTTP → HTTPS ──────────────────────────────────────
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # ── cert-manager for auto-TLS via Let's Encrypt ─────────────────────
+    # Install cert-manager separately, then this annotation makes it
+    # automatically provision and renew TLS certificates for you.
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # ── rate limiting at the ingress layer ──────────────────────────────
+    # Extra defense even if app-level rate limiting fails
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+
+spec:
+  ingressClassName: nginx
+
+  # ── TLS configuration ─────────────────────────────────────────────────
+  tls:
+    - hosts:
+        - sentimentai.example.com          # CHANGE to your domain
+      secretName: sentimentai-tls          # cert-manager creates this automatically
+
+  # ── routing rules ─────────────────────────────────────────────────────
+  # If incoming request matches the host/path, send it to the service.
+  rules:
+    - host: sentimentai.example.com        # CHANGE to your domain
+      http:
+        paths:
+          # All paths under / go to the API
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sentimentai-api
+                port:
+                  number: 8000

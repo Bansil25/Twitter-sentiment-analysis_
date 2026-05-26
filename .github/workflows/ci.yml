@@ -1,0 +1,171 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ─── Stage 1: Lint and type check ────────────────────────────────────────
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ruff mypy black
+      - name: Ruff
+        run: ruff check app/ ml/ tests/
+      - name: Black
+        run: black --check app/ ml/ tests/
+      - name: Mypy
+        run: mypy app/ --ignore-missing-imports --no-strict-optional
+        continue-on-error: true
+
+  # ─── Stage 2: Unit tests ─────────────────────────────────────────────────
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+      - name: Run tests
+        env:
+          SECRET_KEY: "test-secret-key-for-ci-only-32-chars!!"
+          ENVIRONMENT: development
+          REDIS_URL: ""
+        run: |
+          pytest tests/ --cov=app --cov-report=xml \
+            --cov-report=term-missing --asyncio-mode=auto -v
+
+  # ─── Stage 3: Security scanning ──────────────────────────────────────────
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Bandit (Python security)
+        run: |
+          pip install bandit
+          bandit -r app/ ml/ -ll -ii
+        continue-on-error: true
+      - name: Safety (dependency vulns)
+        run: |
+          pip install safety
+          safety check -r requirements.txt
+        continue-on-error: true
+
+  # ─── Stage 4: Build and push Docker image ────────────────────────────────
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Stage 5a: Deploy to Render (cheap option) ───────────────────────────
+  deploy-render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_TARGET == 'render'
+    environment: production
+    steps:
+      - name: Trigger Render deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+      - name: Wait for deploy
+        run: sleep 60
+      - name: Smoke test
+        run: curl -fsS "${{ secrets.PRODUCTION_URL }}/health" || exit 1
+
+  # ─── Stage 5b: Deploy to Kubernetes (real production) ────────────────────
+  # Required secrets:
+  #   KUBE_CONFIG_DATA — base64-encoded kubeconfig
+  #   PRODUCTION_URL   — domain to smoke-test
+  deploy-k8s:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_TARGET == 'k8s'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
+          kubectl config current-context
+      - name: Apply manifests
+        run: kubectl apply -f infrastructure/k8s/
+      - name: Update image tag
+        run: |
+          kubectl set image deployment/sentimentai-api \
+            api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }} \
+            -n sentimentai
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/sentimentai-api \
+            -n sentimentai --timeout=5m
+      - name: Smoke test
+        run: |
+          sleep 30
+          curl -fsS "${{ secrets.PRODUCTION_URL }}/health" || exit 1
+      - name: Rollback on failure
+        if: failure()
+        run: kubectl rollout undo deployment/sentimentai-api -n sentimentai

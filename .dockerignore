@@ -1,0 +1,67 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+dist/
+build/
+.pytest_cache
+.coverage
+htmlcov/
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+.venv
+venv/
+env/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Environment files — NEVER ship .env to production
+.env
+.env.local
+.env.*.local
+
+# Logs and runtime data
+logs/
+*.log
+data/raw
+
+# Trained models (mount as volume in K8s, don't bake into image)
+ml/saved_models/distilbert/
+ml/saved_models/bilstm/
+ml/saved_models/roberta/
+
+# Notebooks
+*.ipynb
+ml/notebooks/
+
+# Docs and CI metadata
+docs/
+README.md
+LICENSE
+.github/
+
+# Tests don't need to ship
+tests/
+
+# Docker artifacts
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Frontend (built separately)
+frontend/

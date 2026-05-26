@@ -1,0 +1,22 @@
+# =============================================================================
+# datasource.yml — auto-provision Prometheus as a Grafana data source
+# =============================================================================
+# Without this, you'd have to log into Grafana and manually click through:
+#   Configuration → Data Sources → Add → Prometheus → URL → Save
+#
+# With this file mounted into /etc/grafana/provisioning/datasources/,
+# Grafana sees Prometheus automatically on startup.
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy                          # Grafana proxies queries (vs browser-direct)
+    url: http://prometheus:9090            # docker-compose service name
+    isDefault: true
+    editable: false                        # prevent accidental UI changes
+    jsonData:
+      timeInterval: "15s"                  # match Prometheus scrape interval
+      httpMethod: POST

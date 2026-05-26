@@ -1,0 +1,71 @@
+# =============================================================================
+# 05-hpa.yaml — Horizontal Pod Autoscaler
+# =============================================================================
+# What this does:
+#   "Watch the CPU usage of my API pods. If average usage exceeds 70%,
+#    add more pods. If it drops below, remove some. Min 3, max 10."
+#
+# Why "horizontal"?
+#   Two ways to scale:
+#     Vertical:   make existing pods bigger (more CPU/memory per pod)
+#     Horizontal: add more pods (this file)
+#   Horizontal is usually preferred — better fault tolerance, no downtime
+#   when scaling (vertical scaling means restarting the pod).
+#
+# Requires the metrics-server to be installed in your cluster.
+# On managed K8s (EKS, GKE, AKS) it's usually pre-installed.
+# Locally with minikube/kind: `minikube addons enable metrics-server`
+# =============================================================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sentimentai-api
+  namespace: sentimentai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sentimentai-api                  # which Deployment to scale
+
+  minReplicas: 3                           # never less than 3 (redundancy)
+  maxReplicas: 10                          # cost ceiling — adjust as needed
+
+  metrics:
+    # ── CPU-based scaling ─────────────────────────────────────────────────
+    # If average CPU usage across pods > 70% of their request value,
+    # scale up. Below 70%, eventually scale down.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # ── Memory-based scaling ──────────────────────────────────────────────
+    # ML inference can be memory-bound (loading models). Watch memory too.
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  # ── scaling behaviour ────────────────────────────────────────────────────
+  # Why this exists: without these settings, the HPA flaps.
+  # "Add 3 pods! Now CPU is low, remove 3 pods! Now it's high again..."
+  # The stabilizationWindow tells K8s to wait before reacting.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30       # react quickly to load spikes
+      policies:
+        - type: Percent
+          value: 100                       # at most, DOUBLE pod count per minute
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300      # wait 5 min of low load before scaling down
+                                           # (avoids killing pods during traffic dips)
+      policies:
+        - type: Percent
+          value: 50                        # at most, halve pod count per minute
+          periodSeconds: 60

@@ -1,0 +1,22 @@
+# =============================================================================
+# 00-namespace.yaml — Logical container for everything else
+# =============================================================================
+# What is a Namespace?
+#   Think of it as a folder inside your cluster. Resources in different
+#   namespaces can have the same name without conflicting. You can also
+#   apply quotas and access rules per namespace.
+#
+# Why "00-" prefix?
+#   K8s applies files alphabetically in the same folder. We want the namespace
+#   to exist before anything else tries to live inside it. 00- guarantees it
+#   runs first. Same pattern as Python migration files.
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sentimentai
+  labels:
+    name: sentimentai
+    environment: production
+    app: sentimentai

@@ -1,0 +1,208 @@
+# =============================================================================
+# 03-api.yaml — The FastAPI app itself (Deployment + Service)
+# =============================================================================
+# This is the most important file in the entire K8s setup.
+# It tells the cluster:
+#   "Run 3 copies of this container. If any die, replace them.
+#    Don't send traffic until they're ready. Stop them gracefully."
+#
+# Read the spec top-down — K8s reads it the same way.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentimentai-api
+  namespace: sentimentai
+  labels:
+    app: sentimentai-api
+    component: backend
+spec:
+  # ── replicas ────────────────────────────────────────────────────────────
+  # "How many copies of this pod should always be running?"
+  # 3 is a common starting point: rolling updates can take one offline at a
+  # time while keeping 2 serving. Below this, you lose redundancy.
+  replicas: 3
+
+  # ── rolling update strategy ─────────────────────────────────────────────
+  # During a deploy, replace pods gradually instead of all at once.
+  # maxSurge=1: can have 1 EXTRA pod running during rollout (so 4 briefly)
+  # maxUnavailable=0: NEVER drop below the requested replica count
+  # This means zero-downtime deploys.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # ── selector ────────────────────────────────────────────────────────────
+  # K8s uses labels to know "which pods belong to this Deployment".
+  # The selector below MUST match the labels in template.metadata.labels.
+  # Mismatch = silent failure where nothing gets deployed.
+  selector:
+    matchLabels:
+      app: sentimentai-api
+
+  # ── template (the actual Pod spec) ──────────────────────────────────────
+  # Everything below this is the blueprint for a single Pod.
+  # K8s makes <replicas> copies of this.
+  template:
+    metadata:
+      labels:
+        app: sentimentai-api               # must match selector above
+        component: backend
+      annotations:
+        # Tells Prometheus to scrape metrics from these pods
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8000"
+        prometheus.io/path:   "/metrics"
+    spec:
+      # ── security context ──────────────────────────────────────────────
+      # Defense in depth — even though our Dockerfile runs as non-root,
+      # tell K8s to enforce it too. If someone forgets in the Dockerfile,
+      # this still catches it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      # ── containers ────────────────────────────────────────────────────
+      # A pod can have multiple containers, but here we just have one.
+      # (Multi-container pods are usually for sidecars like log shippers.)
+      containers:
+        - name: api
+          image: ghcr.io/YOUR_USERNAME/sentimentai:latest
+          imagePullPolicy: Always          # always pull on pod restart
+                                           # (use IfNotPresent for stable tags)
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          # ── env vars from ConfigMap + Secret (from 01-config.yaml) ───
+          # envFrom pulls EVERY key from these resources as env vars.
+          # Saves listing them one by one.
+          envFrom:
+            - configMapRef:
+                name: sentimentai-config
+            - secretRef:
+                name: sentimentai-secrets
+
+          # Additional env vars not from configmaps
+          env:
+            - name: WORKERS
+              value: "2"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name  # inject K8s pod name into logs
+
+          # ── resource requests/limits ──────────────────────────────────
+          # requests = "K8s, reserve this much for me"
+          # limits   = "K8s, kill me if I exceed this"
+          # Setting these correctly is critical:
+          #   - Too low → pod gets evicted under load
+          #   - Too high → wasted money, fewer pods fit per node
+          # Start with these values, adjust based on Prometheus metrics.
+          resources:
+            requests:
+              cpu: "500m"                  # half a CPU core
+              memory: "1Gi"                # 1 GB for DistilBERT in memory
+            limits:
+              cpu: "2"                     # burst up to 2 cores under load
+              memory: "2Gi"                # OOMKilled if it exceeds this
+
+          # ── probes ───────────────────────────────────────────────────
+          # Three probes, three jobs:
+          #
+          # 1. startupProbe: "is the container even up yet?"
+          #    Used during initial startup. Until it passes, the other
+          #    probes are paused. Critical for ML apps because loading
+          #    DistilBERT into memory takes 30+ seconds.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            failureThreshold: 30           # 30 attempts × 10s = 5 min max
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          # 2. livenessProbe: "is the container still healthy?"
+          #    If this fails, K8s RESTARTS the container.
+          #    Use a CHEAP endpoint — don't run model inference here!
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 60        # ignored if startupProbe is set
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # 3. readinessProbe: "should I send traffic to this pod?"
+          #    Failure = pod removed from Service load-balancing pool, but
+          #    NOT restarted. Used when a pod is alive but temporarily
+          #    busy (e.g., loading a new model).
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ── volume mounts ────────────────────────────────────────────
+          # Models are too big to bake into the image (>250 MB for DistilBERT).
+          # Mount them from a PersistentVolumeClaim (PVC) instead.
+          # The PVC stays alive across pod restarts.
+          volumeMounts:
+            - name: model-storage
+              mountPath: /app/ml/saved_models
+              readOnly: true
+
+      # ── pod-level volumes ───────────────────────────────────────────────
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: sentimentai-models    # defined in 04-storage.yaml
+
+      # ── graceful shutdown ───────────────────────────────────────────────
+      # When K8s wants to kill this pod (during a rolling update, scaling
+      # down, etc.), it sends SIGTERM. The pod has terminationGracePeriod
+      # seconds to finish in-flight requests before SIGKILL.
+      # Gunicorn handles SIGTERM properly: stops accepting new connections,
+      # lets active ones finish.
+      terminationGracePeriodSeconds: 60
+
+---
+
+# =============================================================================
+# Service — the stable DNS name and load balancer for the API pods
+# =============================================================================
+# Other pods inside the cluster call this Service at:
+#   http://sentimentai-api.sentimentai.svc.cluster.local:8000
+#   (or just http://sentimentai-api:8000 from inside the same namespace)
+#
+# The Service load-balances across all 3 pods automatically.
+# When a pod dies, the Service stops routing to it (because readiness probe
+# fails). When it comes back, traffic resumes. Zero config needed from us.
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentimentai-api
+  namespace: sentimentai
+  labels:
+    app: sentimentai-api
+spec:
+  type: ClusterIP                          # internal only — Ingress exposes externally
+  selector:
+    app: sentimentai-api                   # routes to pods with this label
+  ports:
+    - name: http
+      port: 8000                           # service port (what callers use)
+      targetPort: 8000                     # container port (what the app listens on)
+      protocol: TCP

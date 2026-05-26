@@ -1,0 +1,38 @@
+# =============================================================================
+# 07-pdb.yaml — Pod Disruption Budget
+# =============================================================================
+# Niche but important. Without this, you can lose availability silently.
+#
+# Scenario:
+#   A cluster admin runs `kubectl drain node-1` for maintenance.
+#   K8s says "okay, evict every pod on that node."
+#   If all 3 of your replicas are on node-1, they ALL get evicted at once.
+#   Result: brief downtime while pods are rescheduled elsewhere.
+#
+# A PDB tells K8s: "during voluntary disruptions, ALWAYS keep at least 2 of
+# my pods running." K8s will then evict pods gradually, one at a time.
+#
+# Voluntary disruptions covered:
+#   - kubectl drain (maintenance)
+#   - Cluster autoscaler removing nodes
+#   - Rolling updates of node OS / k8s version
+# NOT covered: hardware failure, OOM kills, network partitions
+#   (use replicas + multi-zone deployment for those)
+# =============================================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sentimentai-api
+  namespace: sentimentai
+spec:
+  # "Always keep at least 2 pods available during evictions"
+  # With replicas=3, this means K8s can evict 1 pod at a time.
+  minAvailable: 2
+
+  # Could also write: maxUnavailable: 1
+  # Use whichever makes the intent clearer.
+
+  selector:
+    matchLabels:
+      app: sentimentai-api

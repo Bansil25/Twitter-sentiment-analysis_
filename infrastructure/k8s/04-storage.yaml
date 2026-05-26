@@ -1,0 +1,45 @@
+# =============================================================================
+# 04-storage.yaml — Persistent storage for model files
+# =============================================================================
+# WHY this exists:
+#   When a pod restarts, everything in its container is gone — including
+#   downloaded models. We need persistent storage that survives pod restarts.
+#
+# Three concepts:
+#   StorageClass  → "what kind of disk do I want?" (SSD, HDD, network)
+#                   Cluster admins create these; we just reference one.
+#   PersistentVolume (PV)
+#                 → the actual disk that exists somewhere
+#                 → usually created automatically by the StorageClass
+#   PersistentVolumeClaim (PVC)
+#                 → our REQUEST for storage ("I need 5GB please")
+#                 → the Deployment mounts this, not the PV directly
+#
+# Why the layer of indirection?
+#   It lets the app spec be portable. The same PVC works whether the
+#   underlying storage is AWS EBS, GCP Persistent Disk, or Azure Disk.
+# =============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sentimentai-models
+  namespace: sentimentai
+spec:
+  # ReadOnlyMany: multiple pods can read the same files at once.
+  # Critical for our use case — all 3 API replicas read the same model files.
+  # Not all storage backends support this — AWS EFS, Azure Files, NFS do.
+  # AWS EBS does NOT (single-pod only). On EBS you'd use ReadWriteOnce + 1 replica.
+  accessModes:
+    - ReadOnlyMany
+
+  resources:
+    requests:
+      storage: 5Gi                         # enough for distilbert + bilstm + roberta
+
+  # storageClassName is cloud-specific:
+  #   AWS:   efs-sc           (Elastic File System)
+  #   GCP:   standard-rwx     (Filestore)
+  #   Azure: azurefile-csi    (Azure Files)
+  #   Local dev: leave empty for default
+  # storageClassName: efs-sc
