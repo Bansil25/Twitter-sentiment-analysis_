@@ -494,7 +494,7 @@ except ImportError:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train production Bi-LSTM sentiment model")
-    parser.add_argument("--data_path",  default="twitter_training.csv")
+    parser.add_argument("--data_path",  default="data/twitter_training.csv")
     parser.add_argument("--glove_path", default="ml/embeddings/glove.twitter.27B.100d.txt")
     parser.add_argument("--output_dir", default="ml/saved_models/bilstm")
     parser.add_argument("--epochs",     type=int,   default=20)

@@ -1,0 +1,15 @@
+artifact_uri: mlflow-artifacts:/217658964088041157/305588b3d60a4c67a68fa3903f903b30/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '217658964088041157'
+lifecycle_stage: active
+run_id: 305588b3d60a4c67a68fa3903f903b30
+run_name: bilstm-ep20-v1779824724
+run_uuid: 305588b3d60a4c67a68fa3903f903b30
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1779824724401
+status: 1
+tags: []
+user_id: pbans

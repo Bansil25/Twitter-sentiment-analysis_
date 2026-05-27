@@ -1,0 +1,13 @@
+Threshold Tuning Results (Validation Set)
+========================================
+  threshold=0.30  F1=0.9049 ← best
+  threshold=0.35  F1=0.9049
+  threshold=0.40  F1=0.9049
+  threshold=0.45  F1=0.9049
+  threshold=0.50  F1=0.9049
+  threshold=0.55  F1=0.9049
+  threshold=0.60  F1=0.9049
+  threshold=0.65  F1=0.9049
+  threshold=0.70  F1=0.9049
+  threshold=0.75  F1=0.9049
+  threshold=0.80  F1=0.9049
