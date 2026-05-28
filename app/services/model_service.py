@@ -21,10 +21,6 @@ from app.schemas.sentiment import ModelName, SentimentLabel
 
 log = structlog.get_logger()
 
-# Label mapping — must match training label encoding
-LABEL_MAP = {0: SentimentLabel.NEGATIVE, 1: SentimentLabel.POSITIVE,
-             2: SentimentLabel.NEUTRAL,  3: SentimentLabel.IRRELEVANT}
-
 
 class ModelService:
     """
@@ -36,7 +32,17 @@ class ModelService:
     def __init__(self):
         self._models: Dict[ModelName, Any] = {}
         self._tokenizers: Dict[ModelName, Any] = {}
+        self._label_maps: Dict[ModelName, Dict[int, SentimentLabel]] = {}
         self._executor = None  # ThreadPoolExecutor set at load time
+
+# Maps the string labels from training (e.g. "Positive") to API enum values.
+# This is the contract between training data and the API response schema.
+    _TRAINING_LABEL_TO_ENUM = {
+        "Positive":   SentimentLabel.POSITIVE,
+        "Negative":   SentimentLabel.NEGATIVE,
+        "Neutral":    SentimentLabel.NEUTRAL,
+        "Irrelevant": SentimentLabel.IRRELEVANT,
+    }
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -119,12 +125,11 @@ class ModelService:
 
         tokenizer = self._tokenizers[ModelName.DISTILBERT]
         model = self._models[ModelName.DISTILBERT]
+        label_map = self._label_maps[ModelName.DISTILBERT]
 
         inputs = tokenizer(
-            texts,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
+            texts, return_tensors="pt",
+            truncation=True, padding=True,
             max_length=settings.MAX_SEQUENCE_LENGTH,
         )
 
@@ -135,12 +140,12 @@ class ModelService:
         results = []
         for i, prob in enumerate(probs):
             label_idx = int(np.argmax(prob))
-            sentiment = LABEL_MAP.get(label_idx, SentimentLabel.NEUTRAL)
+            sentiment = label_map[label_idx]
+
+            # Build probabilities dict from the same label_map — no hardcoding
             probabilities = {
-                SentimentLabel.NEGATIVE: round(float(prob[0]), 4),
-                SentimentLabel.POSITIVE: round(float(prob[1]), 4),
-                SentimentLabel.NEUTRAL:  round(float(prob[2]), 4),
-                SentimentLabel.IRRELEVANT: round(float(prob[3]), 4),
+                label_map[j]: round(float(prob[j]), 4)
+                for j in range(len(prob))
             }
             result = {
                 "text": texts[i],
@@ -148,11 +153,10 @@ class ModelService:
                 "confidence": round(float(prob[label_idx]), 4),
                 "probabilities": probabilities,
             }
-            if explain and i == 0:  # SHAP only for single predictions
+            if explain and i == 0:
                 result["explanation"] = self._explain_distilbert(texts[i])
             results.append(result)
         return results
-
     # ── Bi-LSTM inference ─────────────────────────────────────────────────
 
     def _bilstm_predict(self, texts: List[str]) -> List[Dict[str, Any]]:
@@ -170,8 +174,8 @@ class ModelService:
         for i, prob in enumerate(probs_batch):
             label_idx = int(np.argmax(prob))
             sentiment = LABEL_MAP.get(label_idx, SentimentLabel.NEUTRAL)
-            all_labels = [SentimentLabel.NEGATIVE, SentimentLabel.POSITIVE,
-                          SentimentLabel.NEUTRAL, SentimentLabel.IRRELEVANT]
+            all_labels = [SentimentLabel.IRRELEVANT, SentimentLabel.NEGATIVE,
+                          SentimentLabel.NEUTRAL, SentimentLabel.POSITIVE]
             probabilities = {label: round(float(prob[j]), 4) for j, label in enumerate(all_labels)}
             results.append({
                 "text": texts[i],
@@ -223,7 +227,24 @@ class ModelService:
             self._tokenizers[ModelName.DISTILBERT] = AutoTokenizer.from_pretrained(str(model_path))
             self._models[ModelName.DISTILBERT] = AutoModelForSequenceClassification.from_pretrained(str(model_path))
             self._models[ModelName.DISTILBERT].eval()
-            log.info("distilbert.loaded")
+
+            # Load the label encoder saved during training — single source of truth
+            encoder_path = model_path / "label_encoder.pkl"
+            if not encoder_path.exists():
+                raise FileNotFoundError(
+                    f"label_encoder.pkl missing in {model_path}. "
+                    f"Retrain or regenerate it (see Phase 4 runbook)."
+                )
+            with open(encoder_path, "rb") as f:
+                encoder = pickle.load(f)
+
+            # Build {index: SentimentLabel} from the encoder's classes
+            label_map = {
+                idx: self._TRAINING_LABEL_TO_ENUM[cls]
+                for idx, cls in enumerate(encoder.classes_)
+            }
+            self._label_maps[ModelName.DISTILBERT] = label_map
+            log.info("distilbert.loaded", classes=list(encoder.classes_), label_map={k: v.value for k, v in label_map.items()})
         except Exception as e:
             log.error("distilbert.load_error", error=str(e))
             raise

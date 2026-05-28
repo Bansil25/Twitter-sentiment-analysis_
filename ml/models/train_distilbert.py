@@ -103,6 +103,13 @@ def train(args):
 
         # Data
         texts, labels, label_encoder = load_and_prepare_data(args.data_path)
+        # Save the label encoder right after data prep — single source of truth
+        import pickle as _pickle
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+        with open(Path(args.output_dir) / "label_encoder.pkl", "wb") as f:
+            _pickle.dump(label_encoder, f)
+        print(f"Saved label_encoder.pkl with classes: {list(label_encoder.classes_)}")
+        
         X_train, X_test, y_train, y_test = train_test_split(
             texts, labels, test_size=0.2, random_state=42, stratify=labels
         )

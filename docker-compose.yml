@@ -48,7 +48,7 @@ services:
       LOG_FORMAT:            console
       ENABLE_DOCS:           "true"
     volumes:
-      - model_artifacts:/app/ml/saved_models
+      - ./ml/saved_models:/app/ml/saved_models:ro
       - ./app:/app/app          # live reload in dev (remove for prod)
     depends_on:
       redis:
@@ -129,7 +129,6 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on: [prometheus]
     networks: [sentimentai]
     restart: unless-stopped

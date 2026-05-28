@@ -8,3 +8,23 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Trained model artifacts — never commit these
+ml/saved_models/
+mlflow.db
+mlflow/
+mlruns/
+
+# Experimental / leftover service variants
+app/services/model_service_v2.py
+
+# Local development files
+*.pkl
+*.safetensors
+*.keras
+
+# Screenshots (you have these in the project root by accident)
+Screenshot*.png
+
+# Hugging Face cache
+.cache/
