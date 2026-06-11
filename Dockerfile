@@ -53,6 +53,23 @@ COPY --chown=appuser:appuser app/      ./app/
 COPY --chown=appuser:appuser ml/       ./ml/
 COPY --chown=appuser:appuser scripts/  ./scripts/
 
+# Download trained model from HuggingFace Hub into the image at build time.
+# This makes the image larger but eliminates cold-start download cost.
+# To use a different model, override DISTILBERT_MODEL_PATH at runtime.
+ENV HF_HOME=/tmp/huggingface
+ENV TRANSFORMERS_CACHE=/tmp/huggingface
+# Download model directly from HuggingFace Hub at build time using
+# snapshot_download — it just copies files without loading model into RAM.
+# This is critical for Render free tier (512MB build memory limit).
+RUN python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download(\
+    repo_id='Bansil25/twitter-sentiment-distilbert', \
+    local_dir='/app/ml/saved_models/distilbert', \
+    local_dir_use_symlinks=False); \
+print('Model downloaded successfully')" \
+    && ls -la /app/ml/saved_models/distilbert/
+    
 RUN mkdir -p ml/saved_models logs && \
     chown -R appuser:appuser /app
 
