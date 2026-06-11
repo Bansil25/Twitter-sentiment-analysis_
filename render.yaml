@@ -1,0 +1,45 @@
+# render.yaml — Render Blueprint manifest
+# Render reads this file to know what services to deploy.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # ─── API service ──────────────────────────────────────────────────
+  - type: web
+    name: sentimentai-api
+    runtime: docker
+    plan: free                       # ~750 hrs/mo free, sleeps after 15 min idle
+    region: oregon                    # closest region for general low latency
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true                  # redeploy on every git push to main branch
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: ENABLE_DOCS
+        value: "true"                 # keep Swagger live for recruiter clicks
+      - key: DEFAULT_MODEL
+        value: distilbert
+      - key: DISTILBERT_MODEL_PATH
+        value: /app/ml/saved_models/distilbert
+      - key: BILSTM_MODEL_PATH
+        value: /app/ml/saved_models/bilstm/model.keras
+      - key: WORKERS
+        value: "1"                    # free tier = 512MB RAM, 1 worker max
+      - key: SECRET_KEY
+        generateValue: true           # Render auto-generates a secure value
+      - key: REDIS_URL
+        fromService:
+          name: sentimentai-redis
+          type: redis
+          property: connectionString
+
+  # ─── Redis (free tier — 25 MB) ───────────────────────────────────
+  - type: redis
+    name: sentimentai-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []                   # empty = only Render-internal access (more secure)
